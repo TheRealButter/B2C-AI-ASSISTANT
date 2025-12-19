@@ -1,0 +1,7 @@
+{
+  "name": "SkoolSwap South Africa",
+  "description": "A premium school book and uniform exchange platform for South African parents, designed for sustainability, safety (POPIA compliant), and community savings.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
