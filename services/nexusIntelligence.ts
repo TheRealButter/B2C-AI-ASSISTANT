@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { AIResponse, TrendingItem, Category } from "../types";
+import { AIResponse, TrendingItem } from "../types";
 
 const getSafeApiKey = (): string => {
   try {
@@ -13,8 +13,8 @@ const getSafeApiKey = (): string => {
 
 const getGemini = () => new GoogleGenAI({ apiKey: getSafeApiKey() });
 
-const CACHE_KEY = 'nexus_pulse_cache_v3';
-const FAIL_CACHE_KEY = 'nexus_fail_cooldown_v3';
+const CACHE_KEY = 'nexus_pulse_cache_v4';
+const FAIL_CACHE_KEY = 'nexus_fail_cooldown_v4';
 const CACHE_EXPIRY = 1000 * 60 * 15; // 15 mins
 const FAIL_COOLDOWN = 1000 * 60 * 2; // 2 min lockout on 429
 
@@ -54,7 +54,7 @@ export const fetchNexusPulse = async (): Promise<TrendingItem[]> => {
   try {
     const response = await callWithRetry(() => ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: "Analyze current market trends for 'Back to School 2025' in South Africa. Identify 4 high-value deals from major retailers (Checkers, Makro, Takealot, Game). Item, Price, Retailer.",
+      contents: "Analyze current market trends for 'Back to School 2025' in South Africa. Identify 4 high-value deals from major retailers (Checkers, Makro, Takealot, Game). Provide Item, Price, Retailer.",
       config: { tools: [{ googleSearch: {} }] }
     }));
 
@@ -83,7 +83,7 @@ export const fetchNexusPulse = async (): Promise<TrendingItem[]> => {
     const items = JSON.parse(structured.text || "[]");
     const pulseData = items.map((p: any, i: number) => ({
       ...p,
-      id: `pulse-v3-${i}`,
+      id: `pulse-v4-${i}`,
       imageUrl: p.category?.toLowerCase().includes('uniform') 
         ? 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=600'
         : p.category?.toLowerCase().includes('book')
