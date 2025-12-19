@@ -2,17 +2,25 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, TrendingItem, Category } from "../types";
 
-// Always initialize GoogleGenAI with the named parameter apiKey from process.env.API_KEY
-const getGemini = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getSafeApiKey = (): string => {
+  try {
+    // @ts-ignore
+    return (typeof process !== 'undefined' ? process.env?.API_KEY : '') || '';
+  } catch (e) {
+    return '';
+  }
+};
 
-const CACHE_KEY = 'nexus_pulse_cache_prod_v1';
-const FAIL_CACHE_KEY = 'nexus_pulse_fail_cooldown_v1';
-const CACHE_EXPIRY = 1000 * 60 * 30; // 30 mins to save quota
-const FAIL_COOLDOWN = 1000 * 60 * 1; // 1 minute lockout
+const getGemini = () => new GoogleGenAI({ apiKey: getSafeApiKey() });
+
+const CACHE_KEY = 'nexus_pulse_cache_v3';
+const FAIL_CACHE_KEY = 'nexus_fail_cooldown_v3';
+const CACHE_EXPIRY = 1000 * 60 * 15; // 15 mins
+const FAIL_COOLDOWN = 1000 * 60 * 2; // 2 min lockout on 429
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function callWithRetry(fn: () => Promise<any>, retries = 2, delay = 2500): Promise<any> {
+async function callWithRetry(fn: () => Promise<any>, retries = 2, delay = 3000): Promise<any> {
   try {
     return await fn();
   } catch (error: any) {
@@ -30,7 +38,8 @@ async function callWithRetry(fn: () => Promise<any>, retries = 2, delay = 2500):
 }
 
 export const fetchNexusPulse = async (): Promise<TrendingItem[]> => {
-  if (!process.env.API_KEY) return [];
+  const apiKey = getSafeApiKey();
+  if (!apiKey) return [];
   
   const lastFail = sessionStorage.getItem(FAIL_CACHE_KEY);
   if (lastFail && (Date.now() - Number(lastFail) < FAIL_COOLDOWN)) return [];
@@ -45,13 +54,13 @@ export const fetchNexusPulse = async (): Promise<TrendingItem[]> => {
   try {
     const response = await callWithRetry(() => ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: "Scout for 4 'Back to School' deals currently available in South Africa. Item, ZAR Price, Retailer.",
+      contents: "Analyze current market trends for 'Back to School 2025' in South Africa. Identify 4 high-value deals from major retailers (Checkers, Makro, Takealot, Game). Item, Price, Retailer.",
       config: { tools: [{ googleSearch: {} }] }
     }));
 
     const structured = await callWithRetry(() => ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Transform to JSON array (title, price, retailer, savingReason, category): ${response.text}`,
+      contents: `Extract exactly 4 deals from this text into a JSON array: ${response.text}. Fields: title, price (no R), retailer, savingReason, category.`,
       config: { 
         responseMimeType: "application/json",
         responseSchema: {
@@ -74,10 +83,10 @@ export const fetchNexusPulse = async (): Promise<TrendingItem[]> => {
     const items = JSON.parse(structured.text || "[]");
     const pulseData = items.map((p: any, i: number) => ({
       ...p,
-      id: `pulse-prod-${i}`,
-      imageUrl: p.category === 'Uniforms' 
+      id: `pulse-v3-${i}`,
+      imageUrl: p.category?.toLowerCase().includes('uniform') 
         ? 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=600'
-        : p.category === 'Textbooks'
+        : p.category?.toLowerCase().includes('book')
         ? 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?q=80&w=600'
         : 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?q=80&w=600',
       url: "#"
@@ -87,7 +96,7 @@ export const fetchNexusPulse = async (): Promise<TrendingItem[]> => {
     return pulseData;
   } catch (e: any) {
     const errorMsg = e?.message?.toLowerCase() || "";
-    if (errorMsg.includes('429') || errorMsg.includes('resource_exhausted')) {
+    if (errorMsg.includes('429')) {
       sessionStorage.setItem(FAIL_CACHE_KEY, Date.now().toString());
     }
     return []; 
@@ -99,36 +108,38 @@ export const executeNexusDeepScan = async (query: string): Promise<AIResponse> =
   try {
     const scout = await callWithRetry(() => ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Deep-scan for: "${query}" in South Africa. Locate stock, current prices, and active promo codes.`,
+      contents: `High-priority retail scan request for: "${query}" in South Africa. Compare stock and pricing across all major physical and digital nodes. Provide promo codes if active.`,
       config: { 
         tools: [{ googleSearch: {} }],
         systemInstruction: `
-          You are the "Nexus Intelligence Scanner". 
-          1. Use clear ### SUMMARY and Markdown TABLES.
-          2. Highlight best prices in **bold**.
-          3. Ensure the tone is elite and technical but easy to read.
+          You are the "Nexus Intelligence Analyst". 
+          - Organize output with ### HEADERS.
+          - Use a | Markdown | Table | for price comparisons.
+          - Identify the **BEST VALUE** node clearly.
+          - Keep language tactical, professional, and aggressive about savings.
+          - Ensure all prices are in ZAR.
         `
       }
     }));
 
     const sources = (scout.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
       .filter((c: any) => c.web)
-      .map((c: any) => ({ title: c.web.title || "Retail Intelligence Node", uri: c.web.uri }));
+      .map((c: any) => ({ title: c.web.title || "Retail Verification Node", uri: c.web.uri }));
 
     return {
-      text: scout.text || "Scan complete. No data streams captured.",
+      text: scout.text || "System could not establish a clean data link.",
       sources,
-      verifiedBy: "Nexus-Flash-V5",
+      verifiedBy: "Nexus-Core-v4.5",
       status: 'SUCCESS'
     };
   } catch (error: any) {
     const errorMsg = error?.message?.toLowerCase() || "";
-    const isRateLimit = errorMsg.includes('429') || errorMsg.includes('resource_exhausted');
+    const isRateLimit = errorMsg.includes('429');
     
     return { 
       text: isRateLimit 
-        ? "### [SYSTEM ALERT]: QUOTA REACHED\nThe Retail Intelligence Link is currently over-saturated. \n\nOur high-speed nodes are recycling to prevent a system lock. \n**Estimated Node Recovery:** 45-60 seconds. \n\nPlease standby and re-launch the scanner shortly." 
-        : "### [ERROR]: SIGNAL LOST\nScanner link interrupted. Network nodes are recycling. Please attempt a re-launch in 60 seconds.", 
+        ? "### [SYSTEM ALERT]: QUOTA EXCEEDED\nHigh-density traffic has saturated the scan nodes. \n\n**Protocol:** Node recycling initiated. \n**Expected Reset:** 60-90 seconds. \n\nPlease standby while we re-establish the intelligence link." 
+        : "### [ERROR]: SIGNAL LOSS\nConnection to retail nodes interrupted. Please re-verify the product query and launch again.", 
       sources: [], 
       status: 'ERROR' 
     };

@@ -2,8 +2,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, Category } from "../types";
 
-// Always initialize GoogleGenAI with the named parameter apiKey from process.env.API_KEY
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safety-first API Key retrieval for direct browser execution
+const getSafeApiKey = (): string => {
+  try {
+    // @ts-ignore
+    return (typeof process !== 'undefined' ? process.env?.API_KEY : '') || '';
+  } catch (e) {
+    return '';
+  }
+};
+
+const getAI = () => new GoogleGenAI({ apiKey: getSafeApiKey() });
 
 export const getPlacementStrategicAdvice = async (
   province: string, 

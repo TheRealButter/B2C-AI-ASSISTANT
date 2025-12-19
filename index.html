@@ -29,7 +29,6 @@
             overflow-x: hidden;
             letter-spacing: -0.01em;
             -webkit-font-smoothing: antialiased;
-            /* Prevent rubber banding on mobile */
             overscroll-behavior-y: none;
         }
 
@@ -40,23 +39,9 @@
             transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        .cyber-card:hover {
-            border-color: var(--accent);
-            box-shadow: 0 0 40px rgba(204, 255, 0, 0.05);
-            transform: translateY(-4px);
-        }
-
         .accent-text { color: var(--accent); }
         .accent-bg { background-color: var(--accent); }
-        .accent-border { border-color: var(--accent); }
-
-        .glass-nav {
-            background: rgba(10, 10, 11, 0.85);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border-top: 1px solid rgba(255, 255, 255, 0.03);
-        }
-
+        
         @keyframes revealUp {
             from { transform: translateY(40px); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
@@ -64,53 +49,56 @@
 
         .reveal { animation: revealUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
-        ::-webkit-scrollbar { width: 0px; background: transparent; }
-        
-        .glow { filter: drop-shadow(0 0 10px rgba(204, 255, 0, 0.5)); }
-
-        .markdown-output table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            margin: 2rem 0;
-            background: #0d0d0e;
-            border-radius: 20px;
-            overflow: hidden;
-            border: 1px solid #222;
-        }
-        .markdown-output th {
-            text-align: left;
-            padding: 1.25rem;
-            background: #1a1a1c;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            color: #888;
-            border-bottom: 1px solid #222;
-        }
-        .markdown-output td {
-            padding: 1.15rem 1.25rem;
-            border-bottom: 1px solid #1a1a1c;
+        /* Crisis Terminal Styles */
+        #crisis-terminal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #000;
+            z-index: 9999;
+            color: #ff3333;
+            padding: 40px;
+            font-family: monospace;
             font-size: 14px;
-            font-weight: 600;
-        }
-        .markdown-output tr:hover td {
-            background: rgba(255, 255, 255, 0.02);
-            color: var(--accent);
+            line-height: 1.6;
         }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.33.0"
-  }
-}
-</script>
+
+    <!-- CRASH GUARD: Prevents blank screen if JS fails to boot -->
+    <script>
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            var terminal = document.getElementById('crisis-terminal');
+            if (terminal) {
+                terminal.style.display = 'block';
+                terminal.innerHTML = '<div style="max-width: 600px; margin: 0 auto;">' +
+                    '<h1 style="color: #ff3333; font-weight: 900; font-size: 24px; margin-bottom: 20px;">[NEXUS BOOT FAILURE]</h1>' +
+                    '<p style="color: #666; margin-bottom: 30px;">Critical exception detected in the application layer. The system has entered safe mode.</p>' +
+                    '<div style="background: #111; padding: 20px; border: 1px solid #333; border-radius: 8px;">' +
+                    '<strong>ERROR:</strong> ' + msg + '<br>' +
+                    '<strong>LOC:</strong> ' + lineNo + ':' + columnNo + '<br>' +
+                    '<strong>URL:</strong> ' + url +
+                    '</div>' +
+                    '<p style="margin-top: 40px; color: #CCFF00;">Check Vercel Environment Variables: Ensure API_KEY is set.</p>' +
+                    '</div>';
+            }
+            return false;
+        };
+    </script>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@^19.2.3",
+        "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+        "react/": "https://esm.sh/react@^19.2.3/",
+        "@google/genai": "https://esm.sh/@google/genai@^1.33.0"
+      }
+    }
+    </script>
 </head>
 <body class="min-h-screen">
     <div id="root" class="min-h-screen flex flex-col"></div>
+    <div id="crisis-terminal"></div>
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>

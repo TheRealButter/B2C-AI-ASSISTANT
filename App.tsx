@@ -7,7 +7,6 @@ import DealsFinder from './components/DealsFinder';
 import BudgetPlanner from './components/BudgetPlanner';
 import PlacementAssistant from './components/PlacementAssistant';
 
-// Standard functional component definition to avoid strict React.FC children requirements in some environments
 const App = () => {
   const [view, setView] = useState<ViewState>('HOME');
 
@@ -32,14 +31,6 @@ const App = () => {
         {renderContent()}
       </main>
       <Navigation currentView={view} onNavigate={setView} />
-      
-      {/* Intelligence Status Tag */}
-      <div className="fixed top-8 right-8 hidden md:block z-[100]">
-        <div className="bg-[#0f0f11]/80 backdrop-blur-2xl border border-zinc-800 px-5 py-3 rounded-2xl flex items-center space-x-3 shadow-3xl">
-           <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></div>
-           <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">Intelligence Unit v4.0 Active</span>
-        </div>
-      </div>
     </div>
   );
 };
