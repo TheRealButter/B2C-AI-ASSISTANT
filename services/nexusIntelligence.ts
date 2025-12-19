@@ -1,24 +1,27 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, TrendingItem, Category } from "../types";
 
+// Always initialize GoogleGenAI with the named parameter apiKey from process.env.API_KEY
 const getGemini = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const CACHE_KEY = 'nexus_pulse_cache';
-const CACHE_EXPIRY = 1000 * 60 * 15; // 15 minutes
+const CACHE_KEY = 'nexus_pulse_cache_prod_v1';
+const FAIL_CACHE_KEY = 'nexus_pulse_fail_cooldown_v1';
+const CACHE_EXPIRY = 1000 * 60 * 30; // 30 mins to save quota
+const FAIL_COOLDOWN = 1000 * 60 * 1; // 1 minute lockout
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-/**
- * Robust wrapper for Gemini API calls with exponential backoff for rate limits (429)
- */
-async function callWithRetry(fn: () => Promise<any>, retries = 3, delay = 1000): Promise<any> {
+async function callWithRetry(fn: () => Promise<any>, retries = 2, delay = 2500): Promise<any> {
   try {
     return await fn();
   } catch (error: any) {
-    const isRateLimit = error?.message?.includes('429') || error?.status === 429 || error?.error?.code === 429;
+    const errorMsg = error?.message?.toLowerCase() || "";
+    const isRateLimit = errorMsg.includes('429') || 
+                        errorMsg.includes('resource_exhausted') || 
+                        errorMsg.includes('quota');
+    
     if (isRateLimit && retries > 0) {
-      console.warn(`Nexus Node rate limited. Retrying in ${delay}ms... (${retries} attempts left)`);
       await wait(delay);
       return callWithRetry(fn, retries - 1, delay * 2);
     }
@@ -27,38 +30,51 @@ async function callWithRetry(fn: () => Promise<any>, retries = 3, delay = 1000):
 }
 
 export const fetchNexusPulse = async (): Promise<TrendingItem[]> => {
-  // Check session cache first
+  if (!process.env.API_KEY) return [];
+  
+  const lastFail = sessionStorage.getItem(FAIL_CACHE_KEY);
+  if (lastFail && (Date.now() - Number(lastFail) < FAIL_COOLDOWN)) return [];
+
   const cached = sessionStorage.getItem(CACHE_KEY);
   if (cached) {
     const { data, timestamp } = JSON.parse(cached);
-    if (Date.now() - timestamp < CACHE_EXPIRY) {
-      return data;
-    }
+    if (Date.now() - timestamp < CACHE_EXPIRY) return data;
   }
 
   const ai = getGemini();
   try {
     const response = await callWithRetry(() => ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: "Find 4 major 'Back to School' deals currently live in South Africa. Return only Item, Price in ZAR, and Retailer.",
+      model: "gemini-3-flash-preview",
+      contents: "Scout for 4 'Back to School' deals currently available in South Africa. Item, ZAR Price, Retailer.",
       config: { tools: [{ googleSearch: {} }] }
     }));
 
-    const structPrompt = `Transform this data into a JSON array of 4 objects. 
-    Keys: title, price, retailer, savingReason, category (Textbooks, Uniforms, Stationery).
-    Data: ${response.text}`;
-
     const structured = await callWithRetry(() => ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: structPrompt,
-      config: { responseMimeType: "application/json" }
+      contents: `Transform to JSON array (title, price, retailer, savingReason, category): ${response.text}`,
+      config: { 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              price: { type: Type.STRING },
+              retailer: { type: Type.STRING },
+              savingReason: { type: Type.STRING },
+              category: { type: Type.STRING }
+            },
+            required: ['title', 'price', 'retailer']
+          }
+        }
+      }
     }));
 
     const items = JSON.parse(structured.text || "[]");
-
     const pulseData = items.map((p: any, i: number) => ({
       ...p,
-      id: `pulse-${i}`,
+      id: `pulse-prod-${i}`,
       imageUrl: p.category === 'Uniforms' 
         ? 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=600'
         : p.category === 'Textbooks'
@@ -67,12 +83,14 @@ export const fetchNexusPulse = async (): Promise<TrendingItem[]> => {
       url: "#"
     }));
 
-    // Save to cache
     sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: pulseData, timestamp: Date.now() }));
     return pulseData;
   } catch (e: any) {
-    console.error("Pulse Engine Critical Error:", e);
-    throw e; // Throw so UI can handle error state
+    const errorMsg = e?.message?.toLowerCase() || "";
+    if (errorMsg.includes('429') || errorMsg.includes('resource_exhausted')) {
+      sessionStorage.setItem(FAIL_CACHE_KEY, Date.now().toString());
+    }
+    return []; 
   }
 };
 
@@ -80,43 +98,37 @@ export const executeNexusDeepScan = async (query: string): Promise<AIResponse> =
   const ai = getGemini();
   try {
     const scout = await callWithRetry(() => ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: `Perform a retail deep-scan for: "${query}" in South Africa. Locate live stock, current prices, and active promo codes.`,
-      config: { tools: [{ googleSearch: {} }] }
-    }));
-
-    const formatter = await callWithRetry(() => ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Format this search intelligence: ${scout.text}`,
+      contents: `Deep-scan for: "${query}" in South Africa. Locate stock, current prices, and active promo codes.`,
       config: { 
+        tools: [{ googleSearch: {} }],
         systemInstruction: `
-          You are the Mistral-Formatting Node. Your ONLY job is to take raw data and output it as beautiful, structured Markdown.
-          1. Use BOLD for retailer names.
-          2. Use a Markdown Table if price comparisons for multiple retailers exist.
-          3. Use distinct bullet points for item features or "Pro Tips".
-          4. Ensure headers use ### for visual hierarchy.
-          5. Keep it clean and professional.
+          You are the "Nexus Intelligence Scanner". 
+          1. Use clear ### SUMMARY and Markdown TABLES.
+          2. Highlight best prices in **bold**.
+          3. Ensure the tone is elite and technical but easy to read.
         `
       }
     }));
 
     const sources = (scout.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
       .filter((c: any) => c.web)
-      .map((c: any) => ({ title: c.web.title || "Retailer Source", uri: c.web.uri }));
+      .map((c: any) => ({ title: c.web.title || "Retail Intelligence Node", uri: c.web.uri }));
 
     return {
-      text: formatter.text || "Scan complete. No data formatted.",
+      text: scout.text || "Scan complete. No data streams captured.",
       sources,
-      verifiedBy: "Groq-Llama3-Node",
+      verifiedBy: "Nexus-Flash-V5",
       status: 'SUCCESS'
     };
   } catch (error: any) {
-    console.error("Scan Execution Failure:", error);
-    const isRateLimit = error?.message?.includes('429');
+    const errorMsg = error?.message?.toLowerCase() || "";
+    const isRateLimit = errorMsg.includes('429') || errorMsg.includes('resource_exhausted');
+    
     return { 
       text: isRateLimit 
-        ? "Intelligence nodes are currently at max capacity. Please wait a few seconds and try your scan again." 
-        : "Scan link interrupted. Our high-speed nodes are recycling. Please try again.", 
+        ? "### [SYSTEM ALERT]: QUOTA REACHED\nThe Retail Intelligence Link is currently over-saturated. \n\nOur high-speed nodes are recycling to prevent a system lock. \n**Estimated Node Recovery:** 45-60 seconds. \n\nPlease standby and re-launch the scanner shortly." 
+        : "### [ERROR]: SIGNAL LOST\nScanner link interrupted. Network nodes are recycling. Please attempt a re-launch in 60 seconds.", 
       sources: [], 
       status: 'ERROR' 
     };

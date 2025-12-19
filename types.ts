@@ -2,8 +2,7 @@
 export enum Category {
   TEXTBOOKS = 'Textbooks',
   UNIFORMS = 'Uniforms',
-  STATIONERY = 'Stationery',
-  FEES = 'Fees & Levies'
+  STATIONERY = 'Stationery'
 }
 
 export interface GroundingSource {
@@ -11,53 +10,13 @@ export interface GroundingSource {
   uri: string;
 }
 
-// AIResponse updated to include optional fields for intelligence node status
 export interface AIResponse {
   text: string;
   sources: GroundingSource[];
-  // Added optional fields used for deep scan reporting
   verifiedBy?: string;
   status?: string;
 }
 
-// Listing interface used in Dashboard, MapSearch, ItemDetails and CreateListing
-export interface Listing {
-  id: string;
-  title: string;
-  price: number;
-  imageUrl: string;
-  category: Category;
-  location: string;
-  seller: string;
-  sellerRating: number;
-  safeMeetingPoint?: string;
-}
-
-// UserStats interface used in Dashboard and Profile
-export interface UserStats {
-  messages: number;
-  rating: number;
-}
-
-export interface RetailerDeal {
-  retailer: string;
-  price: number;
-  item: string;
-  url: string;
-  lastVerified: string;
-}
-
-export interface BudgetItem {
-  id: string;
-  label: string;
-  estimated: number;
-  actual: number;
-  category: string;
-}
-
-export type ViewState = 'HOME' | 'DEALS' | 'BUDGET' | 'PLACEMENT' | 'ABOUT';
-
-// Added missing interface for trending retail items
 export interface TrendingItem {
   id: string;
   title: string;
@@ -69,11 +28,31 @@ export interface TrendingItem {
   category: string;
 }
 
-// Added missing interface for rapid access store nodes
-export interface StoreNode {
+export interface BudgetItem {
   id: string;
-  name: string;
-  dealType: string;
-  icon: string;
-  color: string;
+  label: string;
+  estimated: number;
+  actual: number;
+  category: string;
 }
+
+export interface Listing {
+  id: string;
+  title: string;
+  category: Category;
+  price: number;
+  imageUrl: string;
+  location: string;
+  seller: string;
+  sellerRating: number;
+  safeMeetingPoint?: string;
+}
+
+export interface UserStats {
+  savings: number;
+  activeItems: number;
+  messages: number;
+  rating: number;
+}
+
+export type ViewState = 'HOME' | 'DEALS' | 'BUDGET' | 'PLACEMENT';
